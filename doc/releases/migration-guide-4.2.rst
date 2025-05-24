@@ -79,6 +79,10 @@ Boards
 * Espressif boards ``esp32_devkitc_wroom`` and ``esp32_devkitc_wrover`` shared almost identical features.
   The differences are covered by the Kconfig options so both boards were merged into ``esp32_devkitc``.
 
+* STM32 boards should now add OpenOCD programming support by including ``openocd-stm32.board.cmake``
+  instead of ``openocd.board.cmake``. The ``openocd-stm32.board.cmake`` file extends the default
+  OpenOCD runner with manufacturer-specific configuration like STM32 mass erase commands.
+
 Device Drivers and Devicetree
 *****************************
 
@@ -88,6 +92,10 @@ Devicetree
 * Many of the vendor-specific and arch-specific files that were in dts/common have been moved
   to more specific locations. Therefore, any dts files which ``#include <common/some_file.dtsi>``
   a file from in the zephyr tree will need to be changed to just ``#include <some_file.dtsi>``.
+
+* Silicon Labs SoC-level dts files for Series 2 have been reorganized in subdirectories per device
+  superfamily. Therefore, any dts files for boards that use Series 2 SoCs will need to change their
+  include from ``#include <silabs/some_soc.dtsi>`` to ``#include <silabs/xg2[1-9]/some_soc.dtsi>``.
 
 DAI
 ===
@@ -105,6 +113,15 @@ DMA
 
 * Renamed the devicetree property ``nxp,a_on`` to ``nxp,a-on``.
 * Renamed the devicetree property ``dma_channels`` to ``dma-channels``.
+
+Regulator
+=========
+
+* :dtcompatible:`nordic,npm1300-regulator` BUCK and LDO node GPIO properties are now specified as an
+  integer array without a GPIO controller, removing the requirement for a
+  :dtcompatible:`nordic,npm1300-gpio` node to be present and enabled for GPIO control of the output
+  rails. For example, ``enable-gpios = <&pmic_gpios 3 GPIO_ACTIVE_LOW>;`` is now specified as
+  ``enable-gpio-config = <3 GPIO_ACTIVE_LOW>;``.
 
 Counter
 =======
@@ -214,6 +231,24 @@ Sensors
 * :dtcompatible:`meas,ms5837` has been replaced by :dtcompatible:`meas,ms5837-30ba`
   and :dtcompatible:`meas,ms5837-02ba`. In order to use one of the two variants, the
   status property needs to be used as well.
+
+* The :dtcompatible:`we,wsen-itds` driver has been renamed to
+  :dtcompatible:`we,wsen-itds-2533020201601`.
+  The Device Tree can be configured as follows:
+
+  .. code-block:: devicetree
+
+    &i2c0 {
+      itds:itds-2533020201601@19 {
+        compatible = "we,wsen-itds-2533020201601";
+        reg = <0x19>;
+        odr = "400";
+        op-mode = "high-perf";
+        power-mode = "normal";
+        events-interrupt-gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
+        drdy-interrupt-gpios = < &gpio1 2 GPIO_ACTIVE_HIGH >;
+      };
+    };
 
 Serial
 =======
@@ -330,6 +365,9 @@ Bluetooth Host
 * The macro ``BT_GATT_CCC_INITIALIZER`` in :zephyr_file:`include/zephyr/bluetooth/gatt.h`
   has been renamed to :c:macro:`BT_GATT_CCC_MANAGED_USER_DATA_INIT`. (:github:`88652`)
 
+* The ``CONFIG_BT_ISO_TX_FRAG_COUNT`` Kconfig option was removed as it was completely unused.
+  Any uses of it can simply be removed. (:github:`89836`)
+
 Bluetooth Classic
 =================
 
@@ -371,9 +409,34 @@ Networking
   :c:macro:`HTTPS_SERVICE_DEFINE_EMPTY`, :c:macro:`HTTP_SERVICE_DEFINE` and
   :c:macro:`HTTPS_SERVICE_DEFINE`.
 
-* :kconfig:option:`NET_ZPERF` no longer includes server support by default. To use
-  the server commands, enable :kconfig:option:`NET_ZPERF_SERVER`. If server support
-  is not needed, :kconfig:option:`ZVFS_POLL_MAX` can possibly be reduced.
+* :kconfig:option:`CONFIG_NET_ZPERF` no longer includes server support by default. To use
+  the server commands, enable :kconfig:option:`CONFIG_NET_ZPERF_SERVER`. If server support
+  is not needed, :kconfig:option:`CONFIG_ZVFS_POLL_MAX` can possibly be reduced.
+
+* The L2 Wi-Fi shell now supports interface option for most commands, to accommodate this
+  change some of the existing options have been renamed. The following table
+  summarizes the changes:
+
+  +------------------------+---------------------+--------------------+
+  | Command(s)             | Old option          | New option         |
+  +------------------------+---------------------+--------------------+
+  | ``wifi connect``       | ``-i``              | ``-g``             |
+  | ``wifi ap enable``     |                     |                    |
+  +------------------------+---------------------+--------------------+
+  | ``wifi twt setup``     | ``-i``              | ``-p``             |
+  +------------------------+---------------------+--------------------+
+  | ``wifi ap config``     | ``-i``              | ``-t``             |
+  +------------------------+---------------------+--------------------+
+  | ``wifi mode``          | ``--if-index``      | ``--iface``        |
+  | ``wifi channel``       |                     |                    |
+  | ``wifi packet_filter`` |                     |                    |
+  +------------------------+---------------------+--------------------+
+
+* The :c:type:`http_response_cb_t` HTTP client response callback signature has
+  changed. The callback function now returns ``int`` instead of ``void``. This
+  allows the application to abort the HTTP connection. Existing applications
+  need to update their response callback implementations. To retain current
+  behavior, simply return 0 from the callback.
 
 OpenThread
 ==========
@@ -490,19 +553,51 @@ xSPI
   Note that the property gives the actual size of the memory device in bits.
   Previous mapping address information is now described in xspi node at SoC dtsi level.
 
+Video
+=====
+
+* 8 bit RAW Bayer formats BGGR8 / GBRG8 / GRBG8 / RGGB8 have been renamed by adding
+  a S prefix in front:
+
+  ``VIDEO_PIX_FMT_BGGR8`` becomes ``VIDEO_PIX_FMT_SBGGR8``
+  ``VIDEO_PIX_FMT_GBRG8`` becomes ``VIDEO_PIX_FMT_SGBRG8``
+  ``VIDEO_PIX_FMT_GRBG8`` becomes ``VIDEO_PIX_FMT_SGRBG8``
+  ``VIDEO_PIX_FMT_RGGB8`` becomes ``VIDEO_PIX_FMT_SRGGB8``
+
+* On STM32 devices, the DCMI driver (:dtcompatible:`st,stm32-dcmi`) now relies on endpoint based
+  video-interfaces.yaml bindings for sensor interface properties (such as bus width and
+  synchronization signals).
+  Also the ``capture-rate`` property has been replaced by the usage of the frame interval API
+  :c:func:`video_set_frmival`.
+  See (:github:`89627`).
+
+* video_endpoint_id enum has been dropped. It is no longer a parameter in any video API.
+
+* video_buf_type enum has been added. It is a required parameter in the following video APIs:
+
+  ``set_stream``
+  ``video_stream_start``
+  ``video_stream_stop``
 
 Other subsystems
 ****************
 
-ZBus
-====
-
-* The function :c:func:`zbus_chan_add_obs` now requires a :c:struct:`zbus_observer_node` as an argument,
-  which was previously allocated through :c:func:`k_malloc` internally. The structure must remain valid
-  in memory until :c:func:`zbus_chan_rem_obs` is called.
-
 Modules
 *******
+
+CMSIS
+=====
+
+* Cortex-M boards/socs now require the ``CMSIS_6`` module to build properly (instead of ``cmsis``
+  which was CMSIS 5.9.0).
+  If trying to build a Cortex-M board, do a ``west update`` to make sure that ``CMSIS_6`` module is
+  available before running ``west build`` or other commands.
+
+  Boards or SOCs or modules using the older ``cmsis`` module either with a local copy or via the
+  :kconfig:option:`CONFIG_ZEPHYR_CMSIS_MODULE_DIR` are requested to move to the ``CMSIS_6`` module
+  which can be accessed via the :kconfig:option:`CONFIG_ZEPHYR_CMSIS_6_MODULE_DIR` configuration.
+
+  Note: Zephyr will continue using the older ``cmsis`` module for Cortex-A and Cortex-R targets.
 
 Architectures
 *************

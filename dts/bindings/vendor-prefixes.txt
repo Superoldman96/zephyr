@@ -33,7 +33,9 @@ adh	AD Holdings Plc.
 adi	Analog Devices, Inc.
 advantech	Advantech Corporation
 aeroflexgaisler	Aeroflex Gaisler AB
+aesc	Aesc Silicon
 aesop	AESOP Embedded Forum
+aithinker	Ai-Thinker Co., Ltd.
 al	Annapurna Labs
 alcatel	Alcatel
 alientek	Alientek
@@ -503,8 +505,7 @@ ortustech	Ortus Technology Co., Ltd.
 osddisplays	OSD Displays
 ouya	Ouya Inc.
 overkiz	Overkiz SAS
-ovti	OmniVision Technologies
-ovti	OmniVision Technologies Co., Ltd.
+ovti	OmniVision Technologies Inc.
 oxsemi	Oxford Semiconductor, Ltd.
 ozzmaker	OzzMaker
 panasonic	Panasonic Corporation
@@ -512,6 +513,7 @@ parade	Parade Technologies Inc.
 parallax	Parallax Inc.
 particle	Particle.io
 pda	Precision Design Associates, Inc.
+peacefair	Ningbo Peacefair Electronic Technology Co., Ltd
 peregrine	Peregrine Consultoria e Servicos
 pericom	Pericom Technology Inc.
 pervasive	Pervasive Displays, Inc.
