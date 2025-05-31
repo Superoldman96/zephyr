@@ -45,7 +45,11 @@ LOG_MODULE_REGISTER(LOG_DOMAIN);
 #define REAL_FLASH_SIZE_KB (KB(STM32H7_M4_FLASH_SIZE * 2))
 #endif
 #else
+#if defined(DUAL_BANK)
+#define REAL_FLASH_SIZE_KB (DT_REG_SIZE(DT_INST(0, st_stm32_nv_flash)) * 2)
+#else
 #define REAL_FLASH_SIZE_KB DT_REG_SIZE(DT_INST(0, st_stm32_nv_flash))
+#endif
 #endif
 #define SECTOR_PER_BANK ((REAL_FLASH_SIZE_KB / FLASH_SECTOR_SIZE) / 2)
 #if defined(DUAL_BANK)
@@ -836,6 +840,7 @@ static const struct flash_parameters *flash_stm32h7_get_parameters(const struct 
 	return &flash_stm32h7_parameters;
 }
 
+#ifndef CONFIG_SOC_SERIES_STM32H7RSX
 /* Gives the total logical device size in bytes and return 0. */
 static int flash_stm32h7_get_size(const struct device *dev, uint64_t *size)
 {
@@ -845,6 +850,7 @@ static int flash_stm32h7_get_size(const struct device *dev, uint64_t *size)
 
 	return 0;
 }
+#endif /* !CONFIG_SOC_SERIES_STM32H7RSX */
 
 void flash_stm32_page_layout(const struct device *dev, const struct flash_pages_layout **layout,
 			     size_t *layout_size)
@@ -903,7 +909,9 @@ static DEVICE_API(flash, flash_stm32h7_api) = {
 	.write = flash_stm32h7_write,
 	.read = flash_stm32h7_read,
 	.get_parameters = flash_stm32h7_get_parameters,
+#ifndef CONFIG_SOC_SERIES_STM32H7RSX
 	.get_size = flash_stm32h7_get_size,
+#endif
 #ifdef CONFIG_FLASH_PAGE_LAYOUT
 	.page_layout = flash_stm32_page_layout,
 #endif
