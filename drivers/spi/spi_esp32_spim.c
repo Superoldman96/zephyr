@@ -66,8 +66,8 @@ static int IRAM_ATTR spi_esp32_transfer(const struct device *dev)
 	size_t bit_len = transfer_len_bytes << 3;
 	uint8_t *rx_temp = NULL;
 	uint8_t *tx_temp = NULL;
-	uint8_t dma_len_tx = MIN(ctx->tx_len * data->dfs, SPI_DMA_MAX_BUFFER_SIZE);
-	uint8_t dma_len_rx = MIN(ctx->rx_len * data->dfs, SPI_DMA_MAX_BUFFER_SIZE);
+	size_t dma_len_tx = MIN(ctx->tx_len * data->dfs, SPI_DMA_MAX_BUFFER_SIZE);
+	size_t dma_len_rx = MIN(ctx->rx_len * data->dfs, SPI_DMA_MAX_BUFFER_SIZE);
 
 	if (cfg->dma_enabled) {
 		/* bit_len needs to be at least one byte long when using DMA */
@@ -413,11 +413,7 @@ static int transceive(const struct device *dev,
 {
 	const struct spi_esp32_config *cfg = dev->config;
 	struct spi_esp32_data *data = dev->data;
-	int ret;
-
-	if (!tx_bufs && !rx_bufs) {
-		return 0;
-	}
+	int ret = 0;
 
 #ifndef CONFIG_SPI_ESP32_INTERRUPT
 	if (asynchronous) {
@@ -429,12 +425,16 @@ static int transceive(const struct device *dev,
 
 	data->dfs = spi_esp32_get_frame_size(spi_cfg);
 
+	spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, data->dfs);
+
+	if (data->ctx.tx_buf == NULL && data->ctx.rx_buf == NULL) {
+		goto done;
+	}
+
 	ret = spi_esp32_configure(dev, spi_cfg);
 	if (ret) {
 		goto done;
 	}
-
-	spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, data->dfs);
 
 	spi_context_cs_control(&data->ctx, true);
 

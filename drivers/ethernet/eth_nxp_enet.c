@@ -34,6 +34,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/clock_control.h>
+#include <zephyr/drivers/hwinfo.h>
 
 #ifdef CONFIG_PTP_CLOCK
 #include <zephyr/drivers/ptp_clock.h>
@@ -163,16 +164,20 @@ static inline void ts_register_tx_event(const struct device *dev,
 	struct net_pkt *pkt = frameinfo->context;
 
 	if (pkt && atomic_get(&pkt->atomic_ref) > 0) {
-		if (eth_get_ptp_data(net_pkt_iface(pkt), pkt) && frameinfo->isTsAvail) {
-			k_mutex_lock(data->ptp.ptp_mutex, K_FOREVER);
+		if ((eth_get_ptp_data(net_pkt_iface(pkt), pkt) ||
+		     net_pkt_is_tx_timestamping(pkt)) &&
+		    frameinfo->isTsAvail) {
+			/* Timestamp is written to packet in ISR.
+			 * Semaphore ensures sequential execution of writing
+			 * the timestamp here and subsequently reading the timestamp
+			 * after waiting for the semaphore in eth_wait_for_ptp_ts().
+			 */
 
 			pkt->timestamp.nanosecond = frameinfo->timeStamp.nanosecond;
 			pkt->timestamp.second = frameinfo->timeStamp.second;
 
 			net_if_add_tx_timestamp(pkt);
 			k_sem_give(&data->ptp.ptp_ts_sem);
-
-			k_mutex_unlock(data->ptp.ptp_mutex);
 		}
 		net_pkt_unref(pkt);
 	}
@@ -183,7 +188,9 @@ static inline void eth_wait_for_ptp_ts(const struct device *dev, struct net_pkt 
 	struct nxp_enet_mac_data *data = dev->data;
 
 	net_pkt_ref(pkt);
-	k_sem_take(&data->ptp.ptp_ts_sem, K_FOREVER);
+	while (k_sem_take(&data->ptp.ptp_ts_sem, K_MSEC(200)) != 0) {
+		LOG_ERR("error on take PTP semaphore");
+	}
 }
 #else
 #define eth_get_ptp_data(...) false
@@ -219,10 +226,11 @@ static int eth_nxp_enet_tx(const struct device *dev, struct net_pkt *pkt)
 		goto exit;
 	}
 
-	frame_is_timestamped = eth_get_ptp_data(net_pkt_iface(pkt), pkt);
+	frame_is_timestamped =
+		eth_get_ptp_data(net_pkt_iface(pkt), pkt) || net_pkt_is_tx_timestamping(pkt);
 
-	ret = ENET_SendFrame(data->base, &data->enet_handle, data->tx_frame_buf,
-			     total_len, RING_ID, frame_is_timestamped, pkt);
+	ret = ENET_SendFrame(data->base, &data->enet_handle, data->tx_frame_buf, total_len, RING_ID,
+			     frame_is_timestamped, pkt);
 
 	if (ret != kStatus_Success) {
 		LOG_ERR("ENET_SendFrame error: %d", ret);
@@ -338,6 +346,7 @@ static int eth_nxp_enet_rx(const struct device *dev)
 {
 #if defined(CONFIG_PTP_CLOCK_NXP_ENET)
 	const struct nxp_enet_mac_config *config = dev->config;
+	struct net_ptp_time ptp_time;
 #endif
 	struct nxp_enet_mac_data *data = dev->data;
 	uint32_t frame_length = 0U;
@@ -390,26 +399,20 @@ static int eth_nxp_enet_rx(const struct device *dev)
 #if defined(CONFIG_PTP_CLOCK_NXP_ENET)
 	k_mutex_lock(data->ptp.ptp_mutex, K_FOREVER);
 
-	/* Invalid value by default. */
-	pkt->timestamp.nanosecond = UINT32_MAX;
-	pkt->timestamp.second = UINT64_MAX;
+	/* Timestamp the packet using PTP clock. Add full second part
+	 * the hardware timestamp contains the fractional part of the second only
+	 */
+	ptp_clock_get(config->ptp_clock, &ptp_time);
 
-	/* Timestamp the packet using PTP clock */
-	if (eth_get_ptp_data(get_iface(data), pkt)) {
-		struct net_ptp_time ptp_time;
-
-		ptp_clock_get(config->ptp_clock, &ptp_time);
-
-		/* If latest timestamp reloads after getting from Rx BD,
-		 * then second - 1 to make sure the actual Rx timestamp is accurate
-		 */
-		if (ptp_time.nanosecond < ts) {
-			ptp_time.second--;
-		}
-
-		pkt->timestamp.nanosecond = ts;
-		pkt->timestamp.second = ptp_time.second;
+	/* If latest timestamp reloads after getting from Rx BD,
+	 * then second - 1 to make sure the actual Rx timestamp is accurate
+	 */
+	if (ptp_time.nanosecond < ts) {
+		ptp_time.second--;
 	}
+
+	pkt->timestamp.nanosecond = ts;
+	pkt->timestamp.second = ptp_time.second;
 	k_mutex_unlock(data->ptp.ptp_mutex);
 #endif /* CONFIG_PTP_CLOCK_NXP_ENET */
 
@@ -469,7 +472,7 @@ static int nxp_enet_phy_configure(const struct device *phy, uint8_t phy_mode)
 	}
 
 	/* Configure the PHY */
-	ret = phy_configure_link(phy, speeds);
+	ret = phy_configure_link(phy, speeds, 0);
 
 	if (ret == -ENOTSUP) {
 		phy_get_link_state(phy, &state);
@@ -626,6 +629,9 @@ static void eth_nxp_enet_isr(const struct device *dev)
 		nxp_enet_driver_cb(config->mdio, NXP_ENET_MDIO, NXP_ENET_INTERRUPT, NULL);
 	}
 
+#ifdef CONFIG_PTP_CLOCK_NXP_ENET
+	ENET_TimeStampIRQHandler(data->base, &data->enet_handle);
+#endif
 	irq_unlock(irq_lock_key);
 }
 
@@ -636,12 +642,28 @@ static const struct device *eth_nxp_enet_get_phy(const struct device *dev)
 	return config->phy_dev;
 }
 
+/* we enable HWINFO from kconfig if the relevant DT prop is in the tree */
+#ifdef CONFIG_HWINFO
 /* Note this is not universally unique, it just is probably unique on a network */
 static inline void nxp_enet_unique_mac(uint8_t *mac_addr)
 {
-	uint32_t id = ETH_NXP_ENET_UNIQUE_ID;
+	uint8_t id_buf[3];
+	uint32_t id = 0;
+	int ret;
+
+	ret = hwinfo_get_device_id(id_buf, sizeof(id_buf));
+	if (ret == sizeof(id_buf)) {
+		id |= FIELD_PREP(0xFF0000, id_buf[2]);
+		id |= FIELD_PREP(0x00FF00, id_buf[1]);
+		id |= FIELD_PREP(0x0000FF, id_buf[0]);
+	} else {
+		/* Either implemented wrong, implemented insufficiently, or not at all */
+		/* This is fallback for platforms that don't have HWINFO properly */
+		id = ETH_NXP_ENET_UNIQUE_ID;
+	}
 
 	if (id == 0xFFFFFF) {
+		/* Allowed but should raise highest level error notice to user */
 		LOG_ERR("No unique MAC can be provided in this platform");
 	}
 
@@ -653,6 +675,9 @@ static inline void nxp_enet_unique_mac(uint8_t *mac_addr)
 	mac_addr[4] = FIELD_GET(0x00FF00, id);
 	mac_addr[5] = FIELD_GET(0x0000FF, id);
 }
+#else
+#define nxp_enet_unique_mac(...)
+#endif
 
 #ifdef CONFIG_SOC_FAMILY_NXP_IMXRT
 #include <fsl_ocotp.h>

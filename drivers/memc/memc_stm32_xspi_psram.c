@@ -14,10 +14,19 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/multi_heap/shared_multi_heap.h>
 
 LOG_MODULE_REGISTER(memc_stm32_xspi_psram, CONFIG_MEMC_LOG_LEVEL);
 
 #define STM32_XSPI_NODE DT_INST_PARENT(0)
+
+#ifdef CONFIG_SHARED_MULTI_HEAP
+struct shared_multi_heap_region smh_psram = {
+	.addr = DT_REG_ADDR(DT_NODELABEL(psram)),
+	.size = DT_REG_SIZE(DT_NODELABEL(psram)),
+	.attr = SMH_REG_ATTR_EXTERNAL,
+};
+#endif
 
 /* Memory registers definition */
 #define MR0		0x00000000U
@@ -206,7 +215,6 @@ static int memc_stm32_xspi_psram_init(const struct device *dev)
 	const struct memc_stm32_xspi_psram_config *dev_cfg = dev->config;
 	struct memc_stm32_xspi_psram_data *dev_data = dev->data;
 	XSPI_HandleTypeDef hxspi = dev_data->hxspi;
-	XSPI_TypeDef *xspi = hxspi.Instance;
 	uint32_t ahb_clock_freq;
 	XSPIM_CfgTypeDef cfg = {0};
 	XSPI_RegularCmdTypeDef cmd = {0};
@@ -332,14 +340,29 @@ static int memc_stm32_xspi_psram_init(const struct device *dev)
 	}
 
 	mem_mapped_cfg.TimeOutActivation = HAL_XSPI_TIMEOUT_COUNTER_DISABLE;
+
+#if defined(XSPI_CR_NOPREF)
 	mem_mapped_cfg.NoPrefetchData = HAL_XSPI_AUTOMATIC_PREFETCH_ENABLE;
+#endif
+#if defined(XSPI_CR_NOPREF_AXI)
 	mem_mapped_cfg.NoPrefetchAXI = HAL_XSPI_AXI_PREFETCH_DISABLE;
+#endif
 
 	if (HAL_XSPI_MemoryMapped(&hxspi, &mem_mapped_cfg) != HAL_OK) {
 		return -EIO;
 	}
 
-	MODIFY_REG(xspi->CR, XSPI_CR_NOPREF, HAL_XSPI_AUTOMATIC_PREFETCH_DISABLE);
+#if defined(XSPI_CR_NOPREF)
+	MODIFY_REG(hxspi.Instance->CR, XSPI_CR_NOPREF, HAL_XSPI_AUTOMATIC_PREFETCH_DISABLE);
+#endif
+
+#ifdef CONFIG_SHARED_MULTI_HEAP
+	shared_multi_heap_pool_init();
+	ret = shared_multi_heap_add(&smh_psram, NULL);
+	if (ret < 0) {
+		return ret;
+	}
+#endif
 
 	return 0;
 }
@@ -366,12 +389,12 @@ static struct memc_stm32_xspi_psram_data memc_stm32_xspi_data = {
 	.hxspi = {
 		.Instance = (XSPI_TypeDef *)DT_REG_ADDR(STM32_XSPI_NODE),
 		.Init = {
-			.FifoThresholdByte = 8U,
+			.FifoThresholdByte = 2U,
 			.MemoryMode = HAL_XSPI_SINGLE_MEM,
 			.MemoryType = (DT_INST_PROP(0, io_x16_mode) ?
 					HAL_XSPI_MEMTYPE_APMEM_16BITS :
 					HAL_XSPI_MEMTYPE_APMEM),
-			.ChipSelectHighTimeCycle = 1U,
+			.ChipSelectHighTimeCycle = 5U,
 			.FreeRunningClock = HAL_XSPI_FREERUNCLK_DISABLE,
 			.ClockMode = HAL_XSPI_CLOCK_MODE_0,
 			.WrapSize = HAL_XSPI_WRAP_NOT_SUPPORTED,
