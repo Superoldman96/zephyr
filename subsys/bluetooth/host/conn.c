@@ -120,7 +120,7 @@ sys_slist_t bt_auth_info_cbs = SYS_SLIST_STATIC_INIT(&bt_auth_info_cbs);
 
 static sys_slist_t conn_cbs = SYS_SLIST_STATIC_INIT(&conn_cbs);
 
-static struct bt_conn_tx conn_tx[CONFIG_BT_CONN_TX_MAX];
+static struct bt_conn_tx conn_tx[CONFIG_BT_BUF_ACL_TX_COUNT];
 
 #if defined(CONFIG_BT_CLASSIC)
 static struct bt_conn sco_conns[CONFIG_BT_MAX_SCO_CONN];
@@ -388,11 +388,10 @@ void bt_conn_reset_rx_state(struct bt_conn *conn)
 	conn->rx = NULL;
 }
 
-static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags)
+static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf,
+			uint8_t flags)
 {
 	uint16_t acl_total_len;
-
-	bt_acl_set_ncp_sent(buf, false);
 
 	/* Check packet boundary flags */
 	switch (flags) {
@@ -405,7 +404,7 @@ static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags
 		LOG_DBG("First, len %u final %u", buf->len,
 			(buf->len < sizeof(uint16_t)) ? 0 : sys_get_le16(buf->data));
 
-		conn->rx = net_buf_ref(buf);
+		conn->rx = buf;
 		break;
 	case BT_ACL_CONT:
 		if (!conn->rx) {
@@ -435,6 +434,7 @@ static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags
 		}
 
 		net_buf_add_mem(conn->rx, buf->data, buf->len);
+		net_buf_unref(buf);
 		break;
 	default:
 		/* BT_ACL_START_NO_FLUSH and BT_ACL_COMPLETE are not allowed on
@@ -451,10 +451,6 @@ static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags
 		/* Still not enough data received to retrieve the L2CAP header
 		 * length field.
 		 */
-		bt_send_one_host_num_completed_packets(conn->handle);
-		bt_acl_set_ncp_sent(buf, true);
-		net_buf_unref(buf);
-
 		return;
 	}
 
@@ -462,14 +458,8 @@ static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags
 
 	if (conn->rx->len < acl_total_len) {
 		/* L2CAP frame not complete. */
-		bt_send_one_host_num_completed_packets(conn->handle);
-		bt_acl_set_ncp_sent(buf, true);
-		net_buf_unref(buf);
-
 		return;
 	}
-
-	net_buf_unref(buf);
 
 	if ((conn->type != BT_CONN_TYPE_BR) && (conn->rx->len > acl_total_len)) {
 		LOG_ERR("ACL len mismatch (%u > %u)", conn->rx->len, acl_total_len);
@@ -480,8 +470,6 @@ static void bt_acl_recv(struct bt_conn *conn, struct net_buf *buf, uint8_t flags
 	/* L2CAP frame complete. */
 	buf = conn->rx;
 	conn->rx = NULL;
-
-	__ASSERT(buf->ref == 1, "buf->ref %d", buf->ref);
 
 	LOG_DBG("Successfully parsed %u byte L2CAP packet", buf->len);
 	if (IS_ENABLED(CONFIG_BT_CLASSIC) && (conn->type == BT_CONN_TYPE_BR)) {
@@ -2484,7 +2472,7 @@ int bt_conn_le_start_encryption(struct bt_conn *conn, uint8_t rand[8],
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_START_ENCRYPTION, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -2523,8 +2511,7 @@ uint8_t bt_conn_enc_key_size(const struct bt_conn *conn)
 		struct net_buf *rsp;
 		uint8_t key_size;
 
-		buf = bt_hci_cmd_create(BT_HCI_OP_READ_ENCRYPTION_KEY_SIZE,
-					sizeof(*cp));
+		buf = bt_hci_cmd_alloc(K_FOREVER);
 		if (!buf) {
 			return 0;
 		}
@@ -2990,7 +2977,7 @@ static int bt_conn_get_tx_power_level(struct bt_conn *conn, uint8_t type,
 	struct bt_hci_cp_read_tx_power_level *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_READ_TX_POWER_LEVEL, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3049,7 +3036,7 @@ int bt_conn_le_enhanced_get_tx_power_level(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_ENH_READ_TX_POWER_LEVEL, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3087,7 +3074,7 @@ int bt_conn_le_get_remote_tx_power_level(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_READ_REMOTE_TX_POWER_LEVEL, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3111,7 +3098,7 @@ int bt_conn_le_set_tx_power_report_enable(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_TX_POWER_REPORT_ENABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3187,7 +3174,7 @@ int bt_conn_le_set_path_loss_mon_param(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_PATH_LOSS_REPORTING_PARAMETERS, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3213,7 +3200,7 @@ int bt_conn_le_set_path_loss_mon_enable(struct bt_conn *conn, bool reporting_ena
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_PATH_LOSS_REPORTING_ENABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3288,7 +3275,7 @@ int bt_conn_le_subrate_set_defaults(const struct bt_conn_le_subrate_param *param
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_DEFAULT_SUBRATE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3318,7 +3305,7 @@ int bt_conn_le_subrate_request(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_SUBRATE_REQUEST, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -3948,8 +3935,7 @@ int bt_conn_le_conn_update(struct bt_conn *conn,
 	struct hci_cp_le_conn_update *conn_update;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CONN_UPDATE,
-				sizeof(*conn_update));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}

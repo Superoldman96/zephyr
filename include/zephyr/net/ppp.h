@@ -378,6 +378,8 @@ struct lcp_options {
 };
 
 #if defined(CONFIG_NET_L2_PPP_OPTION_MRU)
+#define LCP_NUM_MY_OPTIONS	2
+#else
 #define LCP_NUM_MY_OPTIONS	1
 #endif
 
@@ -422,9 +424,9 @@ struct ppp_context {
 
 		/** Magic-Number value */
 		uint32_t magic;
-#if defined(CONFIG_NET_L2_PPP_OPTION_MRU)
+
+		/** Options data */
 		struct ppp_my_option_data my_options_data[LCP_NUM_MY_OPTIONS];
-#endif
 	} lcp;
 
 #if defined(CONFIG_NET_IPV4)
@@ -568,11 +570,23 @@ void net_ppp_init(struct net_if *iface);
 			 NET_MGMT_LAYER_CODE(NET_PPP_CODE))
 #define NET_PPP_EVENT	(NET_PPP_BASE | NET_MGMT_EVENT_BIT)
 
+enum {
+	NET_EVENT_PPP_CMD_CARRIER_ON_VAL,
+	NET_EVENT_PPP_CMD_CARRIER_OFF_VAL,
+	NET_EVENT_PPP_CMD_PHASE_RUNNING_VAL,
+	NET_EVENT_PPP_CMD_PHASE_DEAD_VAL,
+
+	NET_EVENT_PPP_CMD_MAX
+};
+
+BUILD_ASSERT(NET_EVENT_PPP_CMD_MAX <= NET_MGMT_MAX_COMMANDS,
+	     "Number of events in net_event_ppp_cmd exceeds the limit");
+
 enum net_event_ppp_cmd {
-	NET_EVENT_PPP_CMD_CARRIER_ON = 1,
-	NET_EVENT_PPP_CMD_CARRIER_OFF,
-	NET_EVENT_PPP_CMD_PHASE_RUNNING,
-	NET_EVENT_PPP_CMD_PHASE_DEAD,
+	NET_MGMT_CMD(NET_EVENT_PPP_CMD_CARRIER_ON),
+	NET_MGMT_CMD(NET_EVENT_PPP_CMD_CARRIER_OFF),
+	NET_MGMT_CMD(NET_EVENT_PPP_CMD_PHASE_RUNNING),
+	NET_MGMT_CMD(NET_EVENT_PPP_CMD_PHASE_DEAD),
 };
 
 struct net_if;

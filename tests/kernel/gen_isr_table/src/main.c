@@ -12,7 +12,7 @@
 #include <zephyr/interrupt_util.h>
 #include <zephyr/sys/barrier.h>
 
-extern uintptr_t _irq_vector_table[];
+extern const uintptr_t _irq_vector_table[];
 
 #if defined(ARCH_IRQ_DIRECT_CONNECT) && defined(CONFIG_GEN_IRQ_VECTOR_TABLE)
 #define HAS_DIRECT_IRQS
@@ -27,6 +27,11 @@ extern uintptr_t _irq_vector_table[];
 #define ISR5_OFFSET	18
 #define TRIG_CHECK_SIZE	19
 #elif defined(CONFIG_SOC_NRF54H20_CPUPPR) || defined(CONFIG_SOC_NRF54H20_CPUFLPR)
+#define ISR1_OFFSET	14
+#define ISR3_OFFSET	15
+#define ISR5_OFFSET	16
+#define TRIG_CHECK_SIZE	17
+#elif defined(CONFIG_SOC_NRF9280_CPUPPR)
 #define ISR1_OFFSET	14
 #define ISR3_OFFSET	15
 #define ISR5_OFFSET	16
@@ -243,7 +248,7 @@ static int check_vector(void *isr, int offset)
 #ifdef CONFIG_GEN_SW_ISR_TABLE
 static int check_sw_isr(void *isr, uintptr_t arg, int offset)
 {
-	struct _isr_table_entry *e = &_sw_isr_table[TABLE_INDEX(offset)];
+	const struct _isr_table_entry *e = &_sw_isr_table[TABLE_INDEX(offset)];
 
 	TC_PRINT("Checking _sw_isr_table entry %d for irq %d\n",
 		 TABLE_INDEX(offset), IRQ_LINE(offset));

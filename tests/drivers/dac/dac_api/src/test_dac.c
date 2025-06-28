@@ -30,6 +30,7 @@
 	defined(CONFIG_BOARD_STM32U083C_DK) || \
 	defined(CONFIG_BOARD_B_U585I_IOT02A) || \
 	defined(CONFIG_BOARD_NUCLEO_U083RC) || \
+	defined(CONFIG_BOARD_NUCLEO_U385RG_Q) || \
 	defined(CONFIG_BOARD_NUCLEO_U575ZI_Q) || \
 	defined(CONFIG_BOARD_NUCLEO_U5A5ZJ_Q) || \
 	defined(CONFIG_BOARD_NUCLEO_WL55JC) || \
@@ -105,6 +106,12 @@
 #define DAC_DEVICE_NODE DT_NODELABEL(dac0)
 #define DAC_RESOLUTION  12
 #define DAC_CHANNEL_ID  0
+
+#elif defined(CONFIG_BOARD_MIMXRT1170_EVK)
+
+#define DAC_DEVICE_NODE		DT_NODELABEL(dac)
+#define DAC_RESOLUTION	12
+#define DAC_CHANNEL_ID	0
 
 #else
 #error "Unsupported board."

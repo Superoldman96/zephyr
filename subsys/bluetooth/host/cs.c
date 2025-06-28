@@ -29,7 +29,6 @@
 #define LOG_LEVEL CONFIG_BT_HCI_CORE_LOG_LEVEL
 LOG_MODULE_REGISTER(bt_cs);
 
-#if defined(CONFIG_BT_CHANNEL_SOUNDING)
 #if defined(CONFIG_BT_CHANNEL_SOUNDING_TEST)
 static struct bt_le_cs_test_cb cs_test_callbacks;
 #endif
@@ -297,7 +296,7 @@ int bt_le_cs_read_remote_supported_capabilities(struct bt_conn *conn)
 	struct bt_hci_cp_le_read_remote_supported_capabilities *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -440,7 +439,7 @@ int bt_le_cs_set_default_settings(struct bt_conn *conn,
 	struct bt_hci_cp_le_cs_set_default_settings *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_SET_DEFAULT_SETTINGS, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -467,7 +466,7 @@ int bt_le_cs_read_remote_fae_table(struct bt_conn *conn)
 	struct bt_hci_cp_le_read_remote_fae_table *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_READ_REMOTE_FAE_TABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -523,7 +522,7 @@ int bt_le_cs_start_test(const struct bt_le_cs_test_param *params)
 	struct bt_hci_op_le_cs_test *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_TEST, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -617,10 +616,6 @@ int bt_le_cs_start_test(const struct bt_le_cs_test_param *params)
 	}
 
 	cp->override_parameters_length = override_parameters_length;
-
-	struct bt_hci_cmd_hdr *hdr = (struct bt_hci_cmd_hdr *)buf->data;
-
-	hdr->param_len += override_parameters_length;
 
 	return bt_hci_cmd_send_sync(BT_HCI_OP_LE_CS_TEST, buf, NULL);
 }
@@ -889,7 +884,7 @@ int bt_le_cs_create_config(struct bt_conn *conn, struct bt_le_cs_create_config_p
 	struct bt_hci_cp_le_cs_create_config *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_CREATE_CONFIG, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -922,7 +917,7 @@ int bt_le_cs_remove_config(struct bt_conn *conn, uint8_t config_id)
 	struct bt_hci_cp_le_cs_remove_config *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_REMOVE_CONFIG, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -939,7 +934,7 @@ int bt_le_cs_security_enable(struct bt_conn *conn)
 	struct bt_hci_cp_le_security_enable *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_SECURITY_ENABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -956,7 +951,7 @@ int bt_le_cs_procedure_enable(struct bt_conn *conn,
 	struct bt_hci_cp_le_procedure_enable *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_PROCEDURE_ENABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -975,7 +970,7 @@ int bt_le_cs_set_procedure_parameters(struct bt_conn *conn,
 	struct bt_hci_cp_le_set_procedure_parameters *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_SET_PROCEDURE_PARAMETERS, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -1004,7 +999,7 @@ int bt_le_cs_set_channel_classification(uint8_t channel_classification[10])
 	uint8_t *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_SET_CHANNEL_CLASSIFICATION, 10);
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -1116,9 +1111,7 @@ int bt_le_cs_write_cached_remote_supported_capabilities(
 	struct bt_hci_cp_le_write_cached_remote_supported_capabilities *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_WRITE_CACHED_REMOTE_SUPPORTED_CAPABILITIES,
-				sizeof(*cp));
-
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -1215,7 +1208,7 @@ int bt_le_cs_write_cached_remote_fae_table(struct bt_conn *conn, int8_t remote_f
 	struct bt_hci_cp_le_write_cached_remote_fae_table *cp;
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_WRITE_CACHED_REMOTE_FAE_TABLE, sizeof(*cp));
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -1313,7 +1306,7 @@ int bt_le_cs_stop_test(void)
 {
 	struct net_buf *buf;
 
-	buf = bt_hci_cmd_create(BT_HCI_OP_LE_CS_TEST_END, 0);
+	buf = bt_hci_cmd_alloc(K_FOREVER);
 	if (!buf) {
 		return -ENOBUFS;
 	}
@@ -1479,5 +1472,3 @@ int bt_le_cs_get_antenna_path(uint8_t n_ap,
 		return -EINVAL;
 	}
 }
-
-#endif /* CONFIG_BT_CHANNEL_SOUNDING */
